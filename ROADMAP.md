@@ -26,8 +26,8 @@ Supabase Postgres                → stores job status + audit result
 - [x] Add `requirements.txt` (`pip freeze > requirements.txt`)
 - [x] Remove stray root `package.json`, `package-lock.json`, `node_modules/`, and `legal-auditor-ai/package-lock.json`
 - [x] Install `busboy` inside `gateway/` (was installed at root by mistake)
-- [ ] Fix typos: `uploadContoller.js`, `answer_constract_question`
-- [ ] Re-init the git repo so the leaked key is gone from history
+- [x] Fix typos: `uploadContoller.js`, `answer_constract_question`
+- [x] Re-init the git repo so the leaked key is gone from history (new repo: apekshasood/contract-risk-analyzer)
 
 ## Phase 1 — Node fundamentals (~1–2 sessions)
 - [x] 1. Make it boot (imports, Express middleware pipeline)
@@ -49,11 +49,20 @@ Supabase Postgres                → stores job status + audit result
   - [ ] Replace the multer route with the streaming route, remove multer
 
 ## Phase 2 — AI engine that really works (Python) (~3–4 sessions)
-- [ ] Send the full PDF text to the audit (remove the `[:500]` cut)
+- [x] Send the full PDF text to the audit (remove the `[:500]` cut)
 - [ ] Chunking for long contracts (map-reduce: audit sections, then merge)
 - [ ] Return 422 for an unreadable PDF instead of a 500 crash
-- [ ] `severity: Literal["HIGH","MEDIUM","LOW"]` in the Pydantic schema
+- [x] `severity: Literal["High","Medium","Low"]` in the Pydantic schema
 - [ ] `client.beta.chat.completions.parse` → `client.chat.completions.parse`
+
+## Done beyond the plan (v0.1.0)
+- [x] Page-tagged text extraction (`[Page N]`) + `verify_clauses()` — every quoted clause is checked against the PDF, wrong page auto-fixed
+- [x] Q&A endpoint (`/api/qa`, gateway `/api/uploads/qa`) with chat history (last 10 turns)
+- [x] Optional `context` (user's situation) sent with the audit
+- [x] `role`: buyer / seller / landlord / tenant for audit + Q&A (`Literal`, 422 on bad value)
+- [x] Next.js 16 chat UI (`web/`): attach PDF + context, role picker, audit cards, Q&A
+- [x] `npm run dev` at root starts Python + gateway + web (concurrently)
+- [x] Feature-branch → PR → squash merge → tag workflow
 
 ## Phase 3 — Supabase (~2–3 sessions)
 - [ ] Create project, connect keys via `.env`

@@ -9,7 +9,13 @@ load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("OPENAI_API_KEY is not set in the environment variables")
-client = OpenAI(api_key=openai_api_key)
+# timeout: fail in 60s instead of the 10-min default; 1 retry for transient errors
+client = OpenAI(api_key=openai_api_key, timeout=60, max_retries=1)
+
+
+class UnreadablePdf(Exception):
+    """The file can't be parsed, or has no extractable text (e.g. a scanned image)."""
+
 def _normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
@@ -36,12 +42,17 @@ def verify_clauses(audit: ContractAudit, text: str) -> AuditResult:
 def extract_text_from_pdf(file: bytes) -> str:
     pages = []
     empty = 0
-    with pdfplumber.open(io.BytesIO(file)) as pdf:
-        for i, page in enumerate(pdf.pages, start=1):
-            page_text = page.extract_text() or ""
-            if not page_text.strip():
-                empty += 1
-            pages.append(f"[Page {i}]\n{page_text}")
+    try:
+        with pdfplumber.open(io.BytesIO(file)) as pdf:
+            for i, page in enumerate(pdf.pages, start=1):
+                page_text = page.extract_text() or ""
+                if not page_text.strip():
+                    empty += 1
+                pages.append(f"[Page {i}]\n{page_text}")
+    except Exception as e:
+        raise UnreadablePdf("This PDF can't be read. It may be corrupted or password-protected.") from e
+    if not pages or empty == len(pages):
+        raise UnreadablePdf("No text found in this PDF. It may be a scanned image.")
     text = "\n\n".join(pages)
     print(f"[extract] {len(pages)} pages, {empty} empty, {len(text)} chars")
     return text
@@ -74,7 +85,7 @@ def qa_system(role: str) -> str:
 
 
 def audit_contract_text(text: str, context: str = "", role: str = "buyer") -> AuditResult:
-    response = client.beta.chat.completions.parse(
+    response = client.chat.completions.parse(
         model="gpt-4o-mini",
         temperature=0,
         messages=[
@@ -94,7 +105,7 @@ def answer_contract_question(text: str, question: str, history: list[ChatTurn], 
         *[{"role": t.role, "content": t.content} for t in history],
         {"role": "user", "content": question},
     ]
-    response = client.beta.chat.completions.parse(
+    response = client.chat.completions.parse(
         model="gpt-4o-mini",
         temperature=0,
         messages=messages,

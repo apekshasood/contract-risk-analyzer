@@ -8,6 +8,14 @@ function errorHandler(err, req, res, next) {
         return res.status(status).json({ error: err.message });
     }
 
+    // Python answered with a 4xx (bad PDF, bad role...): pass its message through
+    if (err.isAxiosError && err.response?.status >= 400 && err.response.status < 500) {
+        const detail = err.response.data?.detail;
+        return res.status(err.response.status).json({
+            error: typeof detail === 'string' ? detail : 'Invalid request',
+        });
+    }
+
     if(err.isAxiosError) {
         return res.status(502).json({ error: 'Analysis service unavailable' });
     }
