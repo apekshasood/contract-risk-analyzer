@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f6f4ef;
+  --surface: #ffffff;
+  --sunken: #efece5;
+  --line: #e4e0d6;
+  --ink: #1b1a17;
+  --ink-2: #45423b;
+  --muted: #6f6b62;
+  --accent: #1f5a4a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3eee9;
+  --high: #b42318;
+  --high-soft: #fdeceb;
+  --med: #9a4a06;
+  --med-soft: #fdf1e1;
+  --low: #1d5fb8;
+  --low-soft: #e8f0fc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f100e;
+    --surface: #171815;
+    --sunken: #1f201c;
+    --line: #2b2c28;
+    --ink: #ebe8e1;
+    --ink-2: #c9c5bc;
+    --muted: #9a968c;
+    --accent: #6cc4a4;
+    --accent-ink: #0b1a15;
+    --accent-soft: #17302a;
+    --high: #f97066;
+    --high-soft: #3a1714;
+    --med: #f5a54a;
+    --med-soft: #35230f;
+    --low: #84b4f5;
+    --low-soft: #14243b;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-high: var(--high);
+  --color-high-soft: var(--high-soft);
+  --color-med: var(--med);
+  --color-med-soft: var(--med-soft);
+  --color-low: var(--low);
+  --color-low-soft: var(--low-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-fraunces);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+::selection { background: color-mix(in oklab, var(--accent) 25%, transparent); }
+
+/* Motion */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-rise { animation: rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes pulse-dot {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+.dot { animation: pulse-dot 1.2s infinite ease-in-out; }
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--sunken) 25%, var(--line) 50%, var(--sunken) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+.bg-dots {
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
