@@ -1,0 +1,13 @@
+{
+  "name": "contract-risk-analyzer",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n python,gateway,web -c yellow,cyan,magenta \"npm:dev:python\" \"npm:dev:gateway\" \"npm:dev:web\"",
+    "dev:python": "cd legal-auditor-ai && venv\\Scripts\\python -m uvicorn app.main:app --reload --port 8000",
+    "dev:gateway": "npm --prefix gateway run dev",
+    "dev:web": "npm --prefix web run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

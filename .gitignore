@@ -1,0 +1,21 @@
+# Secrets
+.env
+.env.*
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# Test files
+big.pdf
+
+# OS
+Thumbs.db
+.DS_Store
+
+Claude outputs/
