@@ -67,9 +67,9 @@ Supabase Postgres                → stores job status + audit result
 ## Phase 3 — Supabase (~2–3 sessions)
 - [ ] Create project, connect keys via `.env`
 - [ ] Auth (email / Google login)
-- [ ] Storage bucket for PDFs
-- [ ] Tables: `documents`, `audits` (id, user_id, status, result JSON)
-- [ ] Row Level Security (users only see their own data)
+- [x] Storage bucket for PDFs
+- [x] Tables: `documents`, `audits` (id, user_id, status, result JSON)
+- [x] Row Level Security (users only see their own data)
 
 ## Phase 4 — Async job flow (~2–3 sessions)
 - [ ] `POST /audits` → 202 + `jobId` immediately
