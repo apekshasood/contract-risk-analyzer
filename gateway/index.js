@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import uploadsRoutes from './routes/uploadsRoutes.js';
+import auditJobsRoutes from './routes/auditJobsRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
 import streamTestRoutes from "./routes/streamTest.js";
 
@@ -20,6 +21,7 @@ app.get('/health', (req, res) => {
 
 
 app.use('/api/uploads', uploadsRoutes);
+app.use('/api/audits', auditJobsRoutes);
 app.use(errorHandler);
 app.listen(PORT, () => {
     console.log(`🚀 Gateway listening on port ${PORT}`);
