@@ -85,7 +85,7 @@ Supabase Postgres                → stores job status + audit result
 - [ ] Audit report view: risks grouped by severity, clause text quoted
 
 ## Phase 6 — Deploy on GCP (~2–3 sessions)
-- [ ] Dockerfile for gateway + Python service
+- [x] Dockerfile for gateway + Python service (+ web, + docker-compose)
 - [ ] Deploy both to Cloud Run
 - [ ] Secrets in Secret Manager
 - [ ] CORS + environment config
