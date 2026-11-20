@@ -72,9 +72,9 @@ Supabase Postgres                → stores job status + audit result
 - [x] Row Level Security (users only see their own data)
 
 ## Phase 4 — Async job flow (~2–3 sessions)
-- [x] `POST /audits` → 202 + `jobId` immediately (gateway, in-memory job store for now)
-- [ ] Python processes the job and writes the result to Postgres
-- [x] Status flow: `queued → processing → done / failed` (in memory; moves to Supabase later)
+- [x] `POST /audits` → 202 immediately (browser creates the `audits` row, gateway checks owner + starts the job)
+- [x] Python processes the job and writes the result to Postgres
+- [x] Status flow: `queued → processing → done / failed` (stored in Supabase `audits`)
 - [x] Failed jobs store an error message
 
 ## Phase 5 — Frontend (Next.js) (~4–5 sessions)

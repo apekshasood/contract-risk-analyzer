@@ -1,5 +1,5 @@
 # Run all three services: docker compose up --build
-# Needs legal-auditor-ai/.env with OPENAI_API_KEY (copy from .env.example).
+# Needs legal-auditor-ai/.env and gateway/.env (copy each from its .env.example).
 services:
   engine:
     build: ./legal-auditor-ai
@@ -9,6 +9,7 @@ services:
 
   gateway:
     build: ./gateway
+    env_file: ./gateway/.env   # SUPABASE_*, ENGINE_SECRET (copy from .env.example)
     environment:
       PORT: "3001"
       AI_ENGINE_URL: http://engine:8000   # service name, not localhost: each container has its own localhost

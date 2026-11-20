@@ -5,7 +5,8 @@ Schema, Row Level Security and the storage bucket live in `migrations/`.
 ## Apply
 
 **Option A — SQL editor (no CLI):** open your project → SQL Editor → paste
-`migrations/20261117000000_documents_audits.sql` → Run. Run it only once.
+each file in `migrations/` in name order → Run. Run each only once:
+`20261117000000_documents_audits.sql`, then `20261120000000_audits_realtime.sql`.
 
 **Option B — CLI:**
 

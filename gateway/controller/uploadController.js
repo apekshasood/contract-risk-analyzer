@@ -2,25 +2,6 @@
 import FormData from 'form-data';
 import axios from 'axios';
 
-export async function processContractUpload(req, res, next) {
-        const form = new FormData();
-        console.log("RSS MB:", Math.round(process.memoryUsage().rss / 1024 / 1024));
-    
-        form.append('file', req.file.buffer, {
-            filename: req.file.originalname,
-            contentType: req.file.mimetype,
-        });
-        form.append('context', req.body.context ?? '');
-        form.append('role', req.body.role ?? 'buyer');
-
-        const response = await axios.post(`${process.env.AI_ENGINE_URL}/api/audit`, form, {
-            headers: form.getHeaders(),
-        });
-
-        return res.json(response.data);
-}
-
-
 // Q&A: same PDF + a question -> Python /api/qa
 export async function processContractQuestion(req, res) {
     const question = req.body.question?.trim();
@@ -40,7 +21,8 @@ export async function processContractQuestion(req, res) {
     form.append('role', req.body.role ?? 'buyer');
 
     const response = await axios.post(`${process.env.AI_ENGINE_URL}/api/qa`, form, {
-        headers: form.getHeaders(),
+        headers: { ...form.getHeaders(), 'X-Engine-Secret': process.env.ENGINE_SECRET },
+        timeout: 2 * 60 * 1000,
     });
 
     return res.json(response.data);

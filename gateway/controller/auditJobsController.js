@@ -1,64 +1,65 @@
 // controller/auditJobsController.js
-// Async audit: answer 202 + jobId at once, run the audit in the background,
-// the client polls GET /api/audits/:id until status is done or failed.
-import FormData from 'form-data';
+// The browser already uploaded the PDF to Storage and inserted a `queued` audit row
+// (RLS makes sure it can only do that for itself). This endpoint:
+//   1. checks the audit belongs to the signed-in user and is still queued
+//   2. enforces the daily limit
+//   3. asks the AI engine to start the job (engine answers 202 at once)
+// The browser then watches the audit row in Supabase until done / failed.
 import axios from 'axios';
-import { createJob, getJob, updateJob } from '../jobs/jobStore.js';
+import { db } from '../lib/supabase.js';
 
-const AI_TIMEOUT_MS = 3 * 60 * 1000; // a job must never stay "processing" forever
+const DAILY_AUDIT_LIMIT = Number(process.env.DAILY_AUDIT_LIMIT ?? 5);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function createAuditJob(req, res) {
-    const job = createJob();
-
-    // Copy what we need now: req is not ours after the response is sent.
-    const input = {
-        buffer: req.file.buffer,
-        filename: req.file.originalname,
-        contentType: req.file.mimetype,
-        context: req.body.context ?? '',
-        role: req.body.role ?? 'buyer',
-    };
-
-    res.status(202).json({ jobId: job.id, status: job.status });
-
-    // Not awaited on purpose. runAudit catches its own errors, so this never rejects.
-    runAudit(job.id, input);
-}
-
-export async function getAuditJob(req, res) {
-    const job = getJob(req.params.id);
-    if (!job) {
-        const err = new Error('Job not found');
-        err.status = 404;
-        throw err;
+export async function startAuditJob(req, res) {
+    const auditId = req.body?.auditId;
+    if (typeof auditId !== 'string' || !UUID_RE.test(auditId)) {
+        return res.status(400).json({ error: 'auditId must be a UUID' });
     }
-    res.json(job);
-}
 
-async function runAudit(jobId, input) {
-    updateJob(jobId, { status: 'processing' });
+    const { data: rows } = await db.get('/audits', {
+        params: { id: `eq.${auditId}`, select: 'id,user_id,status' },
+    });
+    const audit = rows[0];
+    // Same 404 for "missing" and "not yours": don't reveal other users' ids
+    if (!audit || audit.user_id !== req.user.id) {
+        return res.status(404).json({ error: 'Audit not found' });
+    }
+    if (audit.status !== 'queued') {
+        return res.status(409).json({ error: `Audit is already ${audit.status}` });
+    }
+
+    if ((await countAuditsLast24h(req.user.id)) > DAILY_AUDIT_LIMIT) {
+        const error = `Daily limit reached (${DAILY_AUDIT_LIMIT} audits per 24 hours). Please try again tomorrow.`;
+        await markFailed(auditId, error);
+        return res.status(429).json({ error });
+    }
+
     try {
-        const form = new FormData();
-        form.append('file', input.buffer, { filename: input.filename, contentType: input.contentType });
-        form.append('context', input.context);
-        form.append('role', input.role);
-
-        const response = await axios.post(`${process.env.AI_ENGINE_URL}/api/audit`, form, {
-            headers: form.getHeaders(),
-            timeout: AI_TIMEOUT_MS,
+        await axios.post(`${process.env.AI_ENGINE_URL}/api/jobs/${auditId}`, null, {
+            headers: { 'X-Engine-Secret': process.env.ENGINE_SECRET },
+            timeout: 15_000,
         });
-        updateJob(jobId, { status: 'done', result: response.data });
     } catch (err) {
-        console.error(`Job ${jobId} failed:`, err.message);
-        updateJob(jobId, { status: 'failed', error: toUserMessage(err) });
+        // Don't leave the row "queued" forever if the engine never got the job
+        await markFailed(auditId, 'Analysis service unavailable. Please try again.');
+        throw err; // errorHandler -> 502
     }
+
+    res.status(202).json({ auditId, status: 'queued' });
 }
 
-// Show Python's 4xx message (e.g. "No text found in this PDF"), hide everything else.
-function toUserMessage(err) {
-    const status = err.response?.status;
-    const detail = err.response?.data?.detail;
-    if (status >= 400 && status < 500 && typeof detail === 'string') return detail;
-    if (err.code === 'ECONNABORTED') return 'The analysis took too long. Please try again.';
-    return 'Analysis failed. Please try again.';
+// Includes the audit just created, hence "> limit" above.
+async function countAuditsLast24h(userId) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { headers } = await db.get('/audits', {
+        params: { user_id: `eq.${userId}`, created_at: `gte.${since}`, select: 'id' },
+        headers: { Prefer: 'count=exact', Range: '0-0' },
+    });
+    // Content-Range: "0-0/7" -> 7
+    return Number(headers['content-range']?.split('/')[1] ?? 0);
+}
+
+async function markFailed(auditId, error) {
+    await db.patch('/audits', { status: 'failed', error }, { params: { id: `eq.${auditId}` } });
 }
