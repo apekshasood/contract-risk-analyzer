@@ -51,9 +51,9 @@ Supabase Postgres                → stores job status + audit result
 ## Phase 2 — AI engine that really works (Python) (~3–4 sessions)
 - [x] Send the full PDF text to the audit (remove the `[:500]` cut)
 - [ ] Chunking for long contracts (map-reduce: audit sections, then merge)
-- [ ] Return 422 for an unreadable PDF instead of a 500 crash
+- [x] Return 422 for an unreadable PDF instead of a 500 crash
 - [x] `severity: Literal["High","Medium","Low"]` in the Pydantic schema
-- [ ] `client.beta.chat.completions.parse` → `client.chat.completions.parse`
+- [x] `client.beta.chat.completions.parse` → `client.chat.completions.parse`
 
 ## Done beyond the plan (v0.1.0)
 - [x] Page-tagged text extraction (`[Page N]`) + `verify_clauses()` — every quoted clause is checked against the PDF, wrong page auto-fixed
