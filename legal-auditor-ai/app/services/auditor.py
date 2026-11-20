@@ -66,9 +66,14 @@ def audit_system(role: str) -> str:
         f"Do NOT flag clauses that protect the {r} or confirm something is already done.\n"
         f"- rewrite: improved contract wording that fixes the risk in the {r}'s favour. "
         "Never just restate the original clause.\n"
-        "- If the user describes their situation, use it to decide which clauses matter most "
-        "and how severe they are. Only flag what the contract actually says — "
-        "never invent risks from the user's description.\n"
+        f"- Go through the contract section by section and flag EVERY clause that is risky or unfair "
+        f"for the {r}: money (deposits, penalties, price changes), termination and renewal, repairs and costs, "
+        "access and privacy, liability, and dispute resolution. Do not stop after the first few findings.\n"
+        "- quote: copy ONE sentence from the contract exactly, character for character. "
+        "Do not shorten, merge or paraphrase it.\n"
+        "- If the user describes their situation, use it to rank severity and to explain impact. "
+        "It must NOT reduce the list: still flag every risky clause. "
+        "Only flag what the contract actually says, never invent risks from the user's description.\n"
     )
 
 def qa_system(role: str) -> str:
