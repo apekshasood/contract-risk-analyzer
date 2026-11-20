@@ -4,17 +4,17 @@ import cors from 'cors';
 import uploadsRoutes from './routes/uploadsRoutes.js';
 import auditJobsRoutes from './routes/auditJobsRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
-import streamTestRoutes from "./routes/streamTest.js";
 
 const app = express();
 
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors({ origin: "http://localhost:3000" }));
+// CORS_ORIGIN: comma-separated list, e.g. "http://localhost:3000,https://myapp.vercel.app"
+const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',').map((o) => o.trim());
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 // A simple GET route to test if it's alive
-app.use("/api/stream-test", streamTestRoutes);
 app.get('/health', (req, res) => {
     res.json({ status: "Gateway is running!" });
 });
