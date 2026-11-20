@@ -4,6 +4,8 @@ Upload a contract PDF, pick your side of the deal, and get a list of risky or mi
 
 Every risky clause the model quotes is checked against the real PDF text, so the user can see which findings are backed by the document.
 
+**Live:** https://clauseok.vercel.app (sign up with any email)
+
 ## Features
 
 - **Role-aware audit**: the same contract is audited for the `buyer`, `seller`, `landlord` or `tenant`. A clause that protects you is not flagged as a risk.
@@ -19,19 +21,27 @@ Every risky clause the model quotes is checked against the real PDF text, so the
 ## Architecture
 
 ```
-web/  Next.js 16 + React 19 chat UI          :3000
-  │   multipart: PDF + role + context / question
-  ▼
-gateway/  Node.js + Express                   :3001
-  │   multer (10 MB, PDF only) → validatePdf (magic bytes)
-  │   asyncHandler + central errorHandler (400 / 413 / 502)
-  ▼
-legal-auditor-ai/  Python + FastAPI           :8000
-      pdfplumber (page-tagged text) → OpenAI gpt-4o-mini
-      (structured output) → verify_clauses() → JSON
+Browser ── Next.js on Vercel (web/)
+   │  1. sign in (Supabase Auth)
+   │  2. upload PDF straight to Supabase Storage  contracts/<user_id>/<uuid>.pdf
+   │  3. insert documents + audits rows (status: queued), protected by RLS
+   │  4. POST /api/audits { auditId }  + Bearer token
+   ▼
+Gateway, Node.js + Express on Cloud Run (gateway/)
+   │  verify token → audit belongs to user & is queued → daily limit (5/24 h)
+   │  POST /api/jobs/:id  + X-Engine-Secret        ← answers 202 at once
+   ▼
+AI engine, Python + FastAPI on Cloud Run (legal-auditor-ai/)
+      background task: claim row (queued → processing, atomic)
+      download PDF → pdfplumber (page-tagged) → OpenAI gpt-4o-mini (structured output)
+      → verify_clauses() → write result (done) or error (failed)
+   ▲
+Supabase Postgres + Realtime ── browser sees status change live
 ```
 
-**Why a separate gateway?** The browser never talks to the AI engine directly. The gateway is the single place for input checks and error mapping. Later it will also handle auth and rate limits. The Python service only does PDF and LLM work.
+All three run in or near Mumbai (`asia-south1` / Supabase `ap-south-1`). Secrets live in Google Secret Manager and Vercel env vars, never in git.
+
+**Why a separate gateway?** The browser never talks to the AI engine directly. The gateway is the single place for input checks and error mapping. It also checks the user's login, ownership of the audit and the daily limit. The Python service only does PDF and LLM work.
 
 **Why plain `def` routes in FastAPI?** pdfplumber and the OpenAI client are blocking calls. FastAPI runs plain `def` routes in a thread pool, so one slow audit doesn't block other requests.
 
@@ -39,10 +49,10 @@ legal-auditor-ai/  Python + FastAPI           :8000
 
 | Service | Method and path | Body (multipart) | Returns |
 |---|---|---|---|
-| gateway | `POST /api/uploads` | `contract` (PDF), `role`, `context` | audit result |
-| gateway | `POST /api/uploads/qa` | `contract`, `question`, `history` (JSON), `role` | `{ answer, direct_quote, is_in_contract }` |
+| gateway | `POST /api/audits` (JSON, Bearer token) | `{ auditId }` | 202 `{ auditId, status }` |
+| gateway | `POST /api/uploads/qa` (Bearer token) | `contract`, `question`, `history` (JSON), `role` | `{ answer, direct_quote, is_in_contract }` |
 | gateway | `GET /health` | | status |
-| ai engine | `POST /api/audit`, `POST /api/qa` | same, with the field named `file` | same |
+| ai engine | `POST /api/jobs/:id`, `POST /api/audit`, `POST /api/qa` (all need `X-Engine-Secret`) | — / field named `file` | 202 / same |
 
 Audit result shape:
 
@@ -102,6 +112,6 @@ Never commit `.env` files. They are git-ignored. Only the `.env.example` files w
 
 ## Status and roadmap
 
-Done: the full audit and Q&A flow, end to end on a local machine. In progress: Supabase (login, PDF storage, `documents` / `audits` tables with row-level security), then an async job flow (`queued → processing → done / failed`), a dashboard of past audits, Docker and Cloud Run deploy, and evals for audit quality.
+Live and working end to end: sign up, upload, async audit with live status, dashboard, report view, Q&A. Next: evals for audit quality (a scored test set of contracts), then polish.
 
 See [ROADMAP.md](ROADMAP.md) for the full checklist.
