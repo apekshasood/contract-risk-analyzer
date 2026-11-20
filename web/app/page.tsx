@@ -22,7 +22,7 @@ type Role = (typeof ROLES)[number];
 type Msg =
   | { id: string; role: "user"; kind: "file"; name: string; size: number }
   | { id: string; role: "user"; kind: "text"; text: string }
-  | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa" }
+  | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa"; status?: JobStatus }
   | { id: string; role: "assistant"; kind: "audit"; data: AuditResult }
   | { id: string; role: "assistant"; kind: "answer"; data: QaResult }
   | { id: string; role: "assistant"; kind: "error"; text: string };
@@ -32,16 +32,39 @@ const uid = () => Math.random().toString(36).slice(2);
 const formatSize = (b: number) =>
   b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
 
-async function post<T>(path: string, fd: FormData): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY}${path}`, { method: "POST", body: fd });
+    res = await fetch(`${GATEWAY}${path}`, init);
   } catch {
     throw new Error("Can't reach the gateway. Is it running on port 3001?");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? data.message ?? `Request failed (${res.status})`);
   return data as T;
+}
+
+const post = <T,>(path: string, fd: FormData) => request<T>(path, { method: "POST", body: fd });
+
+type JobStatus = "queued" | "processing" | "done" | "failed";
+type AuditJob = { id: string; status: JobStatus; result: AuditResult | null; error: string | null };
+
+const POLL_MS = 2000;
+const MAX_WAIT_MS = 4 * 60 * 1000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Start an audit job, then poll its status until it is done or failed.
+async function runAuditJob(fd: FormData, onStatus: (s: JobStatus) => void): Promise<AuditResult> {
+  const { jobId } = await post<{ jobId: string }>("/api/audits", fd);
+  const deadline = Date.now() + MAX_WAIT_MS;
+  while (Date.now() < deadline) {
+    const job = await request<AuditJob>(`/api/audits/${jobId}`);
+    if (job.status === "done" && job.result) return job.result;
+    if (job.status === "failed") throw new Error(job.error ?? "Analysis failed. Please try again.");
+    onStatus(job.status);
+    await sleep(POLL_MS);
+  }
+  throw new Error("The analysis is taking too long. Please try again.");
 }
 
 export default function Home() {
@@ -84,7 +107,9 @@ export default function Home() {
         fd.append("contract", f);
         if (context) fd.append("context", context);
         fd.append("role", role);
-        const data = await post<AuditResult>("/api/uploads", fd);
+        const data = await runAuditJob(fd, (status) =>
+          replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", status }),
+        );
         replace(loadingId, { id: loadingId, role: "assistant", kind: "audit", data });
       } catch (e) {
         replace(loadingId, { id: loadingId, role: "assistant", kind: "error", text: errText(e) });
@@ -205,7 +230,7 @@ export default function Home() {
                     <UserMessage msg={m} />
                   ) : (
                     <AssistantRow>
-                      {m.kind === "loading" && <Thinking mode={m.mode} />}
+                      {m.kind === "loading" && <Thinking mode={m.mode} status={m.status} />}
                       {m.kind === "error" && <ErrorCard text={m.text} />}
                       {m.kind === "answer" && <Answer data={m.data} />}
                       {m.kind === "audit" && (
@@ -413,7 +438,7 @@ const STEPS = {
   qa: ["Searching the contract", "Drafting an answer"],
 };
 
-function Thinking({ mode }: { mode: "audit" | "qa" }) {
+function Thinking({ mode, status }: { mode: "audit" | "qa"; status?: JobStatus }) {
   const steps = STEPS[mode];
   const [i, setI] = useState(0);
   useEffect(() => {
@@ -429,7 +454,9 @@ function Thinking({ mode }: { mode: "audit" | "qa" }) {
             <span key={d} className="dot size-1.5 rounded-full bg-accent" style={{ animationDelay: `${d}ms` }} />
           ))}
         </span>
-        <span key={i} className="animate-rise">{steps[i]}…</span>
+        <span key={status === "queued" ? "queued" : i} className="animate-rise">
+          {status === "queued" ? "Waiting in the queue" : steps[i]}…
+        </span>
       </div>
       {mode === "audit" && (
         <div className="space-y-2" aria-hidden>
