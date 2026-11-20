@@ -41,7 +41,7 @@ export default function AuditReportPage() {
             <span className="grid size-8 place-items-center rounded-lg bg-accent text-accent-ink">
               <IconScale width={18} height={18} />
             </span>
-            <span className="font-display text-[17px] font-medium tracking-tight text-ink">Clause</span>
+            <span className="font-display text-[17px] font-medium tracking-tight text-ink">ClauseOk</span>
           </Link>
           <Link href="/audits" className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-2 hover:bg-sunken hover:text-ink">
             All audits

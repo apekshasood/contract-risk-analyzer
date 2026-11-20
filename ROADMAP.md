@@ -1,4 +1,4 @@
-# Legal Auditor AI — Roadmap
+# ClauseOk — Roadmap
 
 Tick items with `[x]` as you finish them.
 

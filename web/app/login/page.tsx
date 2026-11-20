@@ -40,7 +40,7 @@ export default function LoginPage() {
           <span className="grid size-8 place-items-center rounded-lg bg-accent text-accent-ink">
             <IconScale width={18} height={18} />
           </span>
-          <span className="font-display text-[17px] font-medium tracking-tight text-ink">Clause</span>
+          <span className="font-display text-[17px] font-medium tracking-tight text-ink">ClauseOk</span>
         </div>
         <h1 className="font-display text-2xl text-ink">{mode === "signin" ? "Sign in" : "Create an account"}</h1>
 

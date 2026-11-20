@@ -1,5 +1,5 @@
 {
-  "name": "contract-risk-analyzer",
+  "name": "clauseok",
   "private": true,
   "scripts": {
     "dev": "concurrently -k -n python,gateway,web -c yellow,cyan,magenta \"npm:dev:python\" \"npm:dev:gateway\" \"npm:dev:web\"",
