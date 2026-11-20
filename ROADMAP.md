@@ -65,7 +65,7 @@ Supabase Postgres                → stores job status + audit result
 - [x] Feature-branch → PR → squash merge → tag workflow
 
 ## Phase 3 — Supabase (~2–3 sessions)
-- [ ] Create project, connect keys via `.env`
+- [x] Create project, connect keys via `.env`
 - [x] Auth (email + password; Google later)
 - [x] Storage bucket for PDFs
 - [x] Tables: `documents`, `audits` (id, user_id, status, result JSON)
@@ -82,14 +82,14 @@ Supabase Postgres                → stores job status + audit result
 - [x] Dashboard: list of past audits
 - [ ] Upload with progress bar (direct to Supabase Storage)
 - [x] Live status via Supabase Realtime (with slow poll fallback)
-- [ ] Audit report view: risks grouped by severity, clause text quoted
+- [x] Audit report view: risks grouped by severity, clause text quoted
 
 ## Phase 6 — Deploy on GCP (~2–3 sessions)
 - [x] Dockerfile for gateway + Python service (+ web, + docker-compose)
-- [ ] Deploy both to Cloud Run
-- [ ] Secrets in Secret Manager
-- [ ] CORS + environment config
-- [ ] Frontend on Vercel
+- [x] Deploy both to Cloud Run (asia-south1, engine with `--no-cpu-throttling`)
+- [x] Secrets in Secret Manager
+- [x] CORS + environment config
+- [x] Frontend on Vercel (https://clauseok.vercel.app)
 - [ ] Test end to end with a stranger's PDF
 
 ## Phase 7 — Evals, the resume number (~3–4 sessions)
@@ -98,7 +98,7 @@ Supabase Postgres                → stores job status + audit result
 - [ ] Record one number (e.g. "catches X% of high-risk clauses") + latency + cost per contract
 
 ## Phase 8 — Portfolio polish (~2 sessions)
-- [ ] Rate limiting + daily OpenAI cost cap
+- [x] Rate limiting (5 audits per user per 24 h) + OpenAI monthly cap
 - [ ] README: architecture diagram, measured numbers, design tradeoffs
 - [ ] 2-minute demo video
 
