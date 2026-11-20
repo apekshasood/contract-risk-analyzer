@@ -24,7 +24,7 @@ type Role = (typeof ROLES)[number];
 type Msg =
   | { id: string; role: "user"; kind: "file"; name: string; size: number }
   | { id: string; role: "user"; kind: "text"; text: string }
-  | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa"; status?: JobStatus }
+  | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa"; status?: JobStatus; upload?: number }
   | { id: string; role: "assistant"; kind: "audit"; data: AuditResult }
   | { id: string; role: "assistant"; kind: "answer"; data: QaResult }
   | { id: string; role: "assistant"; kind: "error"; text: string };
@@ -78,7 +78,9 @@ export default function Home() {
         { id: loadingId, role: "assistant", kind: "loading", mode: "audit" },
       ]);
       try {
-        const auditId = await startAudit(f, role, context);
+        const auditId = await startAudit(f, role, context, (upload) =>
+          replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", upload }),
+        );
         const data = await waitForAudit(auditId, (status) =>
           replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", status }),
         );
@@ -213,7 +215,8 @@ export default function Home() {
                     <UserMessage msg={m} />
                   ) : (
                     <AssistantRow>
-                      {m.kind === "loading" && <Thinking mode={m.mode} status={m.status} />}
+                      {m.kind === "loading" &&
+                        (m.upload !== undefined ? <UploadProgress pct={m.upload} /> : <Thinking mode={m.mode} status={m.status} />)}
                       {m.kind === "error" && <ErrorCard text={m.text} />}
                       {m.kind === "answer" && <Answer data={m.data} />}
                       {m.kind === "audit" && (
@@ -420,6 +423,24 @@ const STEPS = {
   audit: ["Reading every page", "Finding the clauses", "Weighing risk for your side", "Checking quotes against the PDF"],
   qa: ["Searching the contract", "Drafting an answer"],
 };
+
+function UploadProgress({ pct }: { pct: number }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-muted">{pct < 100 ? `Uploading your contract… ${pct}%` : "Uploaded. Starting the analysis…"}</p>
+      <div
+        role="progressbar"
+        aria-label="Upload progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className="h-2 w-full max-w-sm overflow-hidden rounded-full bg-sunken"
+      >
+        <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
 
 function Thinking({ mode, status }: { mode: "audit" | "qa"; status?: JobStatus }) {
   const steps = STEPS[mode];
