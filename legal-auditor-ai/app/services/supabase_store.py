@@ -38,6 +38,8 @@ def claim_audit(audit_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+# Both only touch a row that is still "processing". If the user pressed Stop
+# meanwhile, the row is already "failed" and the late result is dropped.
 def finish_audit(audit_id: str, result: dict) -> None:
     _update(audit_id, {"status": "done", "result": result, "error": None})
 
@@ -55,7 +57,7 @@ def download_pdf(storage_path: str) -> bytes:
 def _update(audit_id: str, fields: dict) -> None:
     r = _session.patch(
         f"{SUPABASE_URL}/rest/v1/audits",
-        params={"id": f"eq.{audit_id}"},
+        params={"id": f"eq.{audit_id}", "status": "eq.processing"},
         json=fields,
         timeout=TIMEOUT,
     )

@@ -49,6 +49,25 @@ export async function startAuditJob(req, res) {
     res.status(202).json({ auditId, status: 'queued' });
 }
 
+// Stop button: mark the user's queued/processing audit as failed.
+// The engine only writes to rows still "processing", so a late result is dropped.
+export async function cancelAuditJob(req, res) {
+    const auditId = req.params.id;
+    if (!UUID_RE.test(auditId)) return res.status(400).json({ error: 'Invalid audit id' });
+
+    const { data: rows } = await db.patch(
+        '/audits',
+        { status: 'failed', error: 'Stopped by you.' },
+        {
+            // user_id filter = ownership check; status filter = only running jobs
+            params: { id: `eq.${auditId}`, user_id: `eq.${req.user.id}`, status: 'in.(queued,processing)', select: 'id,status' },
+            headers: { Prefer: 'return=representation' },
+        },
+    );
+    if (rows.length === 0) return res.status(409).json({ error: 'Audit is not running' });
+    res.json({ auditId, status: 'failed' });
+}
+
 // Includes the audit just created, hence "> limit" above.
 async function countAuditsLast24h(userId) {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

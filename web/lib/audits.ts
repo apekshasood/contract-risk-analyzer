@@ -18,7 +18,16 @@ export type AuditRow = {
 
 export const AUDIT_SELECT = "id,status,role,result,error,created_at,documents(file_name,storage_path)";
 
-export async function startAudit(file: File, role: string, context: string): Promise<string> {
+const abortError = () => new DOMException("Stopped", "AbortError");
+
+/** onCreated runs as soon as the audit row exists, so Stop can cancel it. */
+export async function startAudit(
+  file: File,
+  role: string,
+  context: string,
+  signal?: AbortSignal,
+  onCreated?: (auditId: string) => void,
+): Promise<string> {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) throw new Error("Please sign in again.");
@@ -27,6 +36,7 @@ export async function startAudit(file: File, role: string, context: string): Pro
   const path = `${user.id}/${crypto.randomUUID()}.pdf`;
   const up = await supabase.storage.from("contracts").upload(path, file, { contentType: "application/pdf" });
   if (up.error) throw new Error(`Upload failed: ${up.error.message}`);
+  if (signal?.aborted) throw abortError();
 
   const doc = await supabase
     .from("documents")
@@ -41,13 +51,21 @@ export async function startAudit(file: File, role: string, context: string): Pro
     .select("id")
     .single();
   if (audit.error) throw new Error(`Could not create the audit: ${audit.error.message}`);
+  onCreated?.(audit.data.id);
+  if (signal?.aborted) throw abortError();
 
   await gatewayFetch("/api/audits", {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ auditId: audit.data.id }),
   });
   return audit.data.id;
+}
+
+/** Stop a queued/processing audit. Safe to call more than once. */
+export async function cancelAudit(id: string): Promise<void> {
+  await gatewayFetch(`/api/audits/${id}/cancel`, { method: "POST" }).catch(() => {});
 }
 
 export async function getAudit(id: string): Promise<AuditRow | null> {
@@ -63,8 +81,9 @@ const MAX_WAIT_MS = 5 * 60 * 1000;
  * Resolve when the audit is done (result) or failed (throws).
  * Realtime pushes status changes; a slow poll covers missed events.
  */
-export function waitForAudit(id: string, onStatus: (s: JobStatus) => void): Promise<AuditResult> {
+export function waitForAudit(id: string, onStatus: (s: JobStatus) => void, signal?: AbortSignal): Promise<AuditResult> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
     let finished = false;
     const finish = (fn: () => void) => {
       if (finished) return;
@@ -89,6 +108,7 @@ export function waitForAudit(id: string, onStatus: (s: JobStatus) => void): Prom
       )
       .subscribe();
     const poll = setInterval(check, POLL_MS);
+    signal?.addEventListener("abort", () => finish(() => reject(abortError())), { once: true });
     const timeout = setTimeout(
       () => finish(() => reject(new Error("The analysis is taking too long. Check your dashboard later."))),
       MAX_WAIT_MS,
