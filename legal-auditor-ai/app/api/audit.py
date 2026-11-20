@@ -1,12 +1,13 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, Form, HTTPException
 from pydantic import TypeAdapter, ValidationError
 from app.schemas.contract import ChatTurn, Role
+from app.api.security import require_engine_secret
 
 from app.services.auditor import answer_contract_question, extract_text_from_pdf, audit_contract_text, UnreadablePdf
 
 
 # This is equivalent to `const router = express.Router();`
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_engine_secret)])  # only the gateway may call these
 
 
 # Plain `def` (not async): FastAPI runs these in a threadpool, so the blocking
