@@ -66,7 +66,7 @@ Supabase Postgres                → stores job status + audit result
 
 ## Phase 3 — Supabase (~2–3 sessions)
 - [ ] Create project, connect keys via `.env`
-- [ ] Auth (email / Google login)
+- [x] Auth (email + password; Google later)
 - [x] Storage bucket for PDFs
 - [x] Tables: `documents`, `audits` (id, user_id, status, result JSON)
 - [x] Row Level Security (users only see their own data)
@@ -78,10 +78,10 @@ Supabase Postgres                → stores job status + audit result
 - [x] Failed jobs store an error message
 
 ## Phase 5 — Frontend (Next.js) (~4–5 sessions)
-- [ ] Login / signup pages
-- [ ] Dashboard: list of past audits
+- [x] Login / signup pages
+- [x] Dashboard: list of past audits
 - [ ] Upload with progress bar (direct to Supabase Storage)
-- [ ] Live status via Supabase Realtime
+- [x] Live status via Supabase Realtime (with slow poll fallback)
 - [ ] Audit report view: risks grouped by severity, clause text quoted
 
 ## Phase 6 — Deploy on GCP (~2–3 sessions)
