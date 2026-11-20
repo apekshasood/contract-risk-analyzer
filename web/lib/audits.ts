@@ -1,7 +1,7 @@
 // Audit job flow, all from the browser:
 //   upload PDF to Storage -> insert documents row -> insert queued audits row
 //   -> ask the gateway to start it -> watch the row until done / failed.
-import { supabase, gatewayFetch } from "./supabase";
+import { supabase, gatewayFetch, SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase";
 import type { AuditResult } from "../app/_components/types";
 
 export type JobStatus = "queued" | "processing" | "done" | "failed";
@@ -18,15 +18,54 @@ export type AuditRow = {
 
 export const AUDIT_SELECT = "id,status,role,result,error,created_at,documents(file_name,storage_path)";
 
-export async function startAudit(file: File, role: string, context: string): Promise<string> {
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
-  if (!user) throw new Error("Please sign in again.");
+/**
+ * Upload straight to Supabase Storage and report progress (0-100).
+ * supabase-js uploads with fetch, and fetch has no upload progress events,
+ * so this calls the same Storage endpoint with XMLHttpRequest instead.
+ * The user's token is sent, so the same storage RLS policy still applies.
+ */
+function uploadWithProgress(path: string, file: File, token: string, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${SUPABASE_URL}/storage/v1/object/contracts/${path}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("apikey", SUPABASE_ANON_KEY);
+    xhr.setRequestHeader("Content-Type", "application/pdf");
+    xhr.setRequestHeader("x-upsert", "false"); // never overwrite an existing file
+
+    let last = -1;
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round((e.loaded / e.total) * 100);
+      if (pct !== last) onProgress((last = pct)); // skip repeats: fewer re-renders
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let msg = `status ${xhr.status}`;
+      try {
+        msg = JSON.parse(xhr.responseText).message ?? msg;
+      } catch {}
+      reject(new Error(`Upload failed: ${msg}`));
+    };
+    xhr.onerror = () => reject(new Error("Upload failed: can't reach storage. Please try again."));
+    xhr.onabort = () => reject(new Error("Upload was cancelled."));
+    xhr.send(file);
+  });
+}
+
+export async function startAudit(
+  file: File,
+  role: string,
+  context: string,
+  onUpload: (pct: number) => void = () => {},
+): Promise<string> {
+  const { data: sessionData } = await supabase.auth.getSession(); // refreshes the token if needed
+  const session = sessionData.session;
+  if (!session) throw new Error("Please sign in again.");
 
   // Path must start with the user id: the storage policy checks the first folder.
-  const path = `${user.id}/${crypto.randomUUID()}.pdf`;
-  const up = await supabase.storage.from("contracts").upload(path, file, { contentType: "application/pdf" });
-  if (up.error) throw new Error(`Upload failed: ${up.error.message}`);
+  const path = `${session.user.id}/${crypto.randomUUID()}.pdf`;
+  await uploadWithProgress(path, file, session.access_token, onUpload);
 
   const doc = await supabase
     .from("documents")

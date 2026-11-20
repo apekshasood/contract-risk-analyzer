@@ -10,6 +10,8 @@ if (!url || !anonKey) {
 }
 
 export const supabase = createClient(url, anonKey);
+export const SUPABASE_URL = url;
+export const SUPABASE_ANON_KEY = anonKey;
 
 export const GATEWAY = process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:3001";
 
