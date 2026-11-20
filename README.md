@@ -1,4 +1,4 @@
-# Contract Risk Analyzer
+# ClauseOk
 
 Upload a contract PDF, pick your side of the deal, and get a list of risky or missing clauses, each with a severity, a plain-English explanation and a suggested rewrite. Then ask follow-up questions about the same document.
 

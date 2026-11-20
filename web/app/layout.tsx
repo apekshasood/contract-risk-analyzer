@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const fraunces = Fraunces({ variable: "--font-fraunces", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Contract Risk Analyzer",
+  title: "ClauseOk — know what you're signing",
   description: "Upload a contract and get every risky clause in plain English.",
 };
 

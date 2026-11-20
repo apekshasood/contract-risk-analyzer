@@ -8,13 +8,15 @@
  * Memorable: serif "legal paper" feel + verified-quote badges that prove the AI isn't inventing text.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase, useSession, gatewayFetch } from "../lib/supabase";
+import { startAudit, waitForAudit, type JobStatus } from "../lib/audits";
 import { AuditView } from "./_components/AuditView";
 import type { AuditResult, QaResult } from "./_components/types";
 import {
   IconAlert, IconArrowUp, IconCheck, IconFile, IconInfo, IconPaperclip, IconPlus, IconScale, IconShield, IconUpload,
 } from "./_components/icons";
-
-const GATEWAY = process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:3001";
 
 const ROLES = ["buyer", "seller", "landlord", "tenant"] as const;
 type Role = (typeof ROLES)[number];
@@ -32,42 +34,11 @@ const uid = () => Math.random().toString(36).slice(2);
 const formatSize = (b: number) =>
   b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${GATEWAY}${path}`, init);
-  } catch {
-    throw new Error("Can't reach the gateway. Is it running on port 3001?");
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? data.message ?? `Request failed (${res.status})`);
-  return data as T;
-}
-
-const post = <T,>(path: string, fd: FormData) => request<T>(path, { method: "POST", body: fd });
-
-type JobStatus = "queued" | "processing" | "done" | "failed";
-type AuditJob = { id: string; status: JobStatus; result: AuditResult | null; error: string | null };
-
-const POLL_MS = 2000;
-const MAX_WAIT_MS = 4 * 60 * 1000;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// Start an audit job, then poll its status until it is done or failed.
-async function runAuditJob(fd: FormData, onStatus: (s: JobStatus) => void): Promise<AuditResult> {
-  const { jobId } = await post<{ jobId: string }>("/api/audits", fd);
-  const deadline = Date.now() + MAX_WAIT_MS;
-  while (Date.now() < deadline) {
-    const job = await request<AuditJob>(`/api/audits/${jobId}`);
-    if (job.status === "done" && job.result) return job.result;
-    if (job.status === "failed") throw new Error(job.error ?? "Analysis failed. Please try again.");
-    onStatus(job.status);
-    await sleep(POLL_MS);
-  }
-  throw new Error("The analysis is taking too long. Please try again.");
-}
+const post = <T,>(path: string, fd: FormData) => gatewayFetch<T>(path, { method: "POST", body: fd });
 
 export default function Home() {
+  const router = useRouter();
+  const session = useSession();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [input, setInput] = useState("");
@@ -78,6 +49,10 @@ export default function Home() {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [pending, setPending] = useState<File | null>(null);
   const [role, setRole] = useState<Role>("buyer");
+
+  useEffect(() => {
+    if (session === null) router.replace("/login");
+  }, [session, router]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -103,11 +78,8 @@ export default function Home() {
         { id: loadingId, role: "assistant", kind: "loading", mode: "audit" },
       ]);
       try {
-        const fd = new FormData();
-        fd.append("contract", f);
-        if (context) fd.append("context", context);
-        fd.append("role", role);
-        const data = await runAuditJob(fd, (status) =>
+        const auditId = await startAudit(f, role, context);
+        const data = await waitForAudit(auditId, (status) =>
           replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", status }),
         );
         replace(loadingId, { id: loadingId, role: "assistant", kind: "audit", data });
@@ -178,6 +150,8 @@ export default function Home() {
     setInput("");
   }
 
+  if (!session) return <div className="h-dvh bg-paper" />; // checking session / redirecting
+
   const lastAuditId = [...messages].reverse().find((m) => m.kind === "audit")?.id;
   const isLast = (id: string) => messages[messages.length - 1]?.id === id;
 
@@ -195,9 +169,12 @@ export default function Home() {
             <span className="grid size-8 place-items-center rounded-lg bg-accent text-accent-ink">
               <IconScale width={18} height={18} />
             </span>
-            <span className="font-display text-[17px] font-medium tracking-tight text-ink">Clause</span>
+            <span className="font-display text-[17px] font-medium tracking-tight text-ink">ClauseOk</span>
           </button>
           <div className="flex min-w-0 items-center gap-2">
+            <Link href="/audits" className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-2 transition hover:bg-sunken hover:text-ink">
+              My audits
+            </Link>
             {file && (
               <span className="hidden min-w-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs text-ink-2 sm:inline-flex">
                 <IconFile width={14} height={14} className="shrink-0 text-muted" />
@@ -213,6 +190,12 @@ export default function Home() {
                 <IconPlus width={16} height={16} /> New
               </button>
             )}
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted transition hover:bg-sunken hover:text-ink"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </header>
