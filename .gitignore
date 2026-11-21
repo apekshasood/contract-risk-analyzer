@@ -20,3 +20,6 @@ Thumbs.db
 .DS_Store
 
 Claude outputs/
+
+# Eval outputs
+legal-auditor-ai/evals/out/
