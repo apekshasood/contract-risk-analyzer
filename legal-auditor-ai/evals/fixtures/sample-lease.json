@@ -1,0 +1,9 @@
+{
+  "summary": "Hand-written fake audit output, used only by the unit test.",
+  "clauses": [
+    { "title": "Rent can rise at any time", "type": "risky", "page": 1, "quote": "The Landlord may increase the rent at any time by giving 7 days notice.", "severity": "High", "issue": "Unlimited rent increase", "plain_english": "", "rewrite": "", "verified": true },
+    { "title": "Deposit can be kept in full", "type": "risky", "page": 1, "quote": "The Tenant shall pay a deposit of Rs 1,50,000, which the Landlord may keep in full if the Tenant leaves before the end of the term.", "severity": "High", "issue": "Whole deposit lost on early exit", "plain_english": "", "rewrite": "", "verified": true },
+    { "title": "Tenant pays structural repairs", "type": "risky", "page": 1, "quote": "The Tenant shall pay for all repairs to the property.", "severity": "High", "issue": "Structural work is normally the landlord's job", "plain_english": "", "rewrite": "", "verified": false },
+    { "title": "No notice period for move-out inspection", "type": "missing", "page": null, "quote": null, "severity": "Low", "issue": "Missing clause", "plain_english": "", "rewrite": "", "verified": null }
+  ]
+}

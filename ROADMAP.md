@@ -94,7 +94,7 @@ Supabase Postgres                → stores job status + audit result
 
 ## Phase 7 — Evals, the resume number (~3–4 sessions)
 - [ ] Collect 15–20 contracts, hand-mark the expected risks
-- [ ] Script that scores the AI output against them
+- [x] Script that scores the AI output against them (`legal-auditor-ai/evals/`)
 - [ ] Record one number (e.g. "catches X% of high-risk clauses") + latency + cost per contract
 
 ## Phase 8 — Portfolio polish (~2 sessions)
