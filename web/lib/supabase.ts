@@ -36,7 +36,8 @@ export async function gatewayFetch<T>(path: string, init: RequestInit = {}): Pro
       ...init,
       headers: { ...init.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
-  } catch {
+  } catch (e) {
+    if (init.signal?.aborted) throw e; // Stop pressed: let the caller see the AbortError
     throw new Error("Can't reach the server. Please try again.");
   }
   const body = await res.json().catch(() => ({}));

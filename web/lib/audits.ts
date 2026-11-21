@@ -18,14 +18,23 @@ export type AuditRow = {
 
 export const AUDIT_SELECT = "id,status,role,result,error,created_at,documents(file_name,storage_path)";
 
+const abortError = () => new DOMException("Stopped", "AbortError");
+
 /**
  * Upload straight to Supabase Storage and report progress (0-100).
  * supabase-js uploads with fetch, and fetch has no upload progress events,
  * so this calls the same Storage endpoint with XMLHttpRequest instead.
  * The user's token is sent, so the same storage RLS policy still applies.
  */
-function uploadWithProgress(path: string, file: File, token: string, onProgress: (pct: number) => void): Promise<void> {
+function uploadWithProgress(
+  path: string,
+  file: File,
+  token: string,
+  onProgress: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${SUPABASE_URL}/storage/v1/object/contracts/${path}`);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -48,15 +57,19 @@ function uploadWithProgress(path: string, file: File, token: string, onProgress:
       reject(new Error(`Upload failed: ${msg}`));
     };
     xhr.onerror = () => reject(new Error("Upload failed: can't reach storage. Please try again."));
-    xhr.onabort = () => reject(new Error("Upload was cancelled."));
+    xhr.onabort = () => reject(abortError()); // Stop pressed during upload
+    signal?.addEventListener("abort", () => xhr.abort(), { once: true });
     xhr.send(file);
   });
 }
 
+/** onCreated runs as soon as the audit row exists, so Stop can cancel it. */
 export async function startAudit(
   file: File,
   role: string,
   context: string,
+  signal?: AbortSignal,
+  onCreated?: (auditId: string) => void,
   onUpload: (pct: number) => void = () => {},
 ): Promise<string> {
   const { data: sessionData } = await supabase.auth.getSession(); // refreshes the token if needed
@@ -65,7 +78,7 @@ export async function startAudit(
 
   // Path must start with the user id: the storage policy checks the first folder.
   const path = `${session.user.id}/${crypto.randomUUID()}.pdf`;
-  await uploadWithProgress(path, file, session.access_token, onUpload);
+  await uploadWithProgress(path, file, session.access_token, onUpload, signal);
 
   const doc = await supabase
     .from("documents")
@@ -80,13 +93,21 @@ export async function startAudit(
     .select("id")
     .single();
   if (audit.error) throw new Error(`Could not create the audit: ${audit.error.message}`);
+  onCreated?.(audit.data.id);
+  if (signal?.aborted) throw abortError();
 
   await gatewayFetch("/api/audits", {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ auditId: audit.data.id }),
   });
   return audit.data.id;
+}
+
+/** Stop a queued/processing audit. Safe to call more than once. */
+export async function cancelAudit(id: string): Promise<void> {
+  await gatewayFetch(`/api/audits/${id}/cancel`, { method: "POST" }).catch(() => {});
 }
 
 export async function getAudit(id: string): Promise<AuditRow | null> {
@@ -102,8 +123,9 @@ const MAX_WAIT_MS = 5 * 60 * 1000;
  * Resolve when the audit is done (result) or failed (throws).
  * Realtime pushes status changes; a slow poll covers missed events.
  */
-export function waitForAudit(id: string, onStatus: (s: JobStatus) => void): Promise<AuditResult> {
+export function waitForAudit(id: string, onStatus: (s: JobStatus) => void, signal?: AbortSignal): Promise<AuditResult> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
     let finished = false;
     const finish = (fn: () => void) => {
       if (finished) return;
@@ -128,6 +150,7 @@ export function waitForAudit(id: string, onStatus: (s: JobStatus) => void): Prom
       )
       .subscribe();
     const poll = setInterval(check, POLL_MS);
+    signal?.addEventListener("abort", () => finish(() => reject(abortError())), { once: true });
     const timeout = setTimeout(
       () => finish(() => reject(new Error("The analysis is taking too long. Check your dashboard later."))),
       MAX_WAIT_MS,

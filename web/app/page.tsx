@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase, useSession, gatewayFetch } from "../lib/supabase";
-import { startAudit, waitForAudit, type JobStatus } from "../lib/audits";
+import { cancelAudit, startAudit, waitForAudit, type JobStatus } from "../lib/audits";
 import { AuditView } from "./_components/AuditView";
 import type { AuditResult, QaResult } from "./_components/types";
 import {
@@ -27,14 +27,18 @@ type Msg =
   | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa"; status?: JobStatus; upload?: number }
   | { id: string; role: "assistant"; kind: "audit"; data: AuditResult }
   | { id: string; role: "assistant"; kind: "answer"; data: QaResult }
-  | { id: string; role: "assistant"; kind: "error"; text: string };
+  | { id: string; role: "assistant"; kind: "error"; text: string; retry?: Retry };
+
+// What the Retry button re-sends
+type Retry = { mode: "audit"; file: File; context: string } | { mode: "qa"; question: string };
+
+const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 
 const uid = () => Math.random().toString(36).slice(2);
 
 const formatSize = (b: number) =>
   b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
 
-const post = <T,>(path: string, fd: FormData) => gatewayFetch<T>(path, { method: "POST", body: fd });
 
 export default function Home() {
   const router = useRouter();
@@ -58,6 +62,16 @@ export default function Home() {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
+  // The request in flight, so Stop can abort it (and cancel the audit job on the server)
+  const running = useRef<{ controller: AbortController; auditId?: string } | null>(null);
+
+  function stop() {
+    const r = running.current;
+    if (!r) return;
+    r.controller.abort();
+    if (r.auditId) cancelAudit(r.auditId);
+  }
+
   const replace = (id: string, msg: Msg) => setMessages((m) => m.map((x) => (x.id === id ? msg : x)));
   const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong");
 
@@ -77,17 +91,30 @@ export default function Home() {
         ...(context ? [{ id: uid(), role: "user" as const, kind: "text" as const, text: context }] : []),
         { id: loadingId, role: "assistant", kind: "loading", mode: "audit" },
       ]);
+      const controller = new AbortController();
+      running.current = { controller };
       try {
-        const auditId = await startAudit(f, role, context, (upload) =>
-          replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", upload }),
+        const auditId = await startAudit(
+          f, role, context, controller.signal,
+          (id) => {
+            if (running.current) running.current.auditId = id;
+          },
+          (upload) => replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", upload }),
         );
-        const data = await waitForAudit(auditId, (status) =>
-          replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", status }),
+        const data = await waitForAudit(
+          auditId,
+          (status) => replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", status }),
+          controller.signal,
         );
         replace(loadingId, { id: loadingId, role: "assistant", kind: "audit", data });
       } catch (e) {
-        replace(loadingId, { id: loadingId, role: "assistant", kind: "error", text: errText(e) });
+        replace(loadingId, {
+          id: loadingId, role: "assistant", kind: "error",
+          text: isAbort(e) ? "Stopped." : errText(e),
+          retry: { mode: "audit", file: f, context },
+        });
       } finally {
+        running.current = null;
         setBusy(false);
         textarea.current?.focus();
       }
@@ -111,6 +138,8 @@ export default function Home() {
         { id: uid(), role: "user", kind: "text", text: question },
         { id: loadingId, role: "assistant", kind: "loading", mode: "qa" },
       ]);
+      const controller = new AbortController();
+      running.current = { controller };
       try {
         const fd = new FormData();
         fd.append("question", question);
@@ -123,16 +152,35 @@ export default function Home() {
             : []
           )
         ));
-        const data = await post<QaResult>("/api/uploads/qa", fd);
+        const data = await gatewayFetch<QaResult>("/api/uploads/qa", { method: "POST", body: fd, signal: controller.signal });
         replace(loadingId, { id: loadingId, role: "assistant", kind: "answer", data });
       } catch (e) {
-        replace(loadingId, { id: loadingId, role: "assistant", kind: "error", text: errText(e) });
+        replace(loadingId, {
+          id: loadingId, role: "assistant", kind: "error",
+          text: isAbort(e) ? "Stopped." : errText(e),
+          retry: { mode: "qa", question },
+        });
       } finally {
+        running.current = null;
         setBusy(false);
       }
     },
     [busy, file, messages, role],
   );
+
+  // Drop the failed attempt (its error card and the user message above it), then run it again
+  function retry(errorId: string, r: Retry) {
+    if (busy) return;
+    setMessages((m) => {
+      const i = m.findIndex((x) => x.id === errorId);
+      if (i < 0) return m;
+      let start = i;
+      while (start > 0 && m[start - 1].role === "user") start--;
+      return m.slice(0, start);
+    });
+    if (r.mode === "audit") analyze(r.file, r.context);
+    else ask(r.question);
+  }
 
   function send() {
     if (pending) {
@@ -216,8 +264,12 @@ export default function Home() {
                   ) : (
                     <AssistantRow>
                       {m.kind === "loading" &&
-                        (m.upload !== undefined ? <UploadProgress pct={m.upload} /> : <Thinking mode={m.mode} status={m.status} />)}
-                      {m.kind === "error" && <ErrorCard text={m.text} />}
+                        (m.upload !== undefined
+                          ? <UploadProgress pct={m.upload} onStop={stop} />
+                          : <Thinking mode={m.mode} status={m.status} onStop={stop} />)}
+                      {m.kind === "error" && (
+                        <ErrorCard text={m.text} onRetry={m.retry && !busy ? () => retry(m.id, m.retry!) : undefined} />
+                      )}
                       {m.kind === "answer" && <Answer data={m.data} />}
                       {m.kind === "audit" && (
                         <AuditView data={m.data} onAsk={ask} showSuggestions={m.id === lastAuditId && isLast(m.id) && !busy} />
@@ -292,14 +344,26 @@ export default function Home() {
               placeholder={pending ? "Add your situation (optional) — e.g. resale flat, I'm the buyer…" : file ? "Ask about this contract…" : "Attach a contract to begin…"}
               className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 py-2.5 text-[15px] leading-5 text-ink outline-none [field-sizing:content] placeholder:text-muted/80"
             />
-            <button
-              type="submit"
-              disabled={(!input.trim() && !pending) || busy}
-              aria-label="Send question"
-              className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-ink transition duration-150 hover:brightness-110 active:scale-95 disabled:opacity-30 disabled:hover:brightness-100"
-            >
-              <IconArrowUp width={18} height={18} strokeWidth={2.25} />
-            </button>
+            {busy ? (
+              <button
+                type="button"
+                onClick={stop}
+                aria-label="Stop"
+                title="Stop"
+                className="grid size-10 shrink-0 place-items-center rounded-xl bg-ink text-paper transition duration-150 hover:brightness-110 active:scale-95"
+              >
+                <span className="size-3.5 rounded-[3px] bg-paper" aria-hidden />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim() && !pending}
+                aria-label="Send question"
+                className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-ink transition duration-150 hover:brightness-110 active:scale-95 disabled:opacity-30 disabled:hover:brightness-100"
+              >
+                <IconArrowUp width={18} height={18} strokeWidth={2.25} />
+              </button>
+            )}
           </div>
           <p className="mt-2 text-center text-xs text-muted">AI analysis, not legal advice. Check important clauses with a lawyer.</p>
         </form>
@@ -424,10 +488,19 @@ const STEPS = {
   qa: ["Searching the contract", "Drafting an answer"],
 };
 
-function UploadProgress({ pct }: { pct: number }) {
+function UploadProgress({ pct, onStop }: { pct: number; onStop: () => void }) {
   return (
     <div className="space-y-2">
-      <p className="text-sm text-muted">{pct < 100 ? `Uploading your contract… ${pct}%` : "Uploaded. Starting the analysis…"}</p>
+      <div className="flex items-center gap-3">
+        <p className="text-sm text-muted">{pct < 100 ? `Uploading your contract… ${pct}%` : "Uploaded. Starting the analysis…"}</p>
+        <button
+          type="button"
+          onClick={onStop}
+          className="ml-auto rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:border-high/40 hover:text-high"
+        >
+          Stop
+        </button>
+      </div>
       <div
         role="progressbar"
         aria-label="Upload progress"
@@ -442,7 +515,7 @@ function UploadProgress({ pct }: { pct: number }) {
   );
 }
 
-function Thinking({ mode, status }: { mode: "audit" | "qa"; status?: JobStatus }) {
+function Thinking({ mode, status, onStop }: { mode: "audit" | "qa"; status?: JobStatus; onStop: () => void }) {
   const steps = STEPS[mode];
   const [i, setI] = useState(0);
   useEffect(() => {
@@ -461,6 +534,13 @@ function Thinking({ mode, status }: { mode: "audit" | "qa"; status?: JobStatus }
         <span key={status === "queued" ? "queued" : i} className="animate-rise">
           {status === "queued" ? "Waiting in the queue" : steps[i]}…
         </span>
+        <button
+          type="button"
+          onClick={onStop}
+          className="ml-auto rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:border-high/40 hover:text-high"
+        >
+          Stop
+        </button>
       </div>
       {mode === "audit" && (
         <div className="space-y-2" aria-hidden>
@@ -475,14 +555,23 @@ function Thinking({ mode, status }: { mode: "audit" | "qa"; status?: JobStatus }
   );
 }
 
-function ErrorCard({ text }: { text: string }) {
+function ErrorCard({ text, onRetry }: { text: string; onRetry?: () => void }) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-high/25 bg-high-soft p-4">
       <IconAlert className="mt-0.5 shrink-0 text-high" width={18} height={18} />
-      <div>
+      <div className="flex-1">
         <p className="text-sm font-medium text-ink">Couldn&rsquo;t finish that</p>
         <p className="mt-0.5 text-sm text-ink-2">{text}</p>
       </div>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="shrink-0 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink transition hover:border-accent/50"
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }
