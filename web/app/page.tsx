@@ -24,7 +24,7 @@ type Role = (typeof ROLES)[number];
 type Msg =
   | { id: string; role: "user"; kind: "file"; name: string; size: number }
   | { id: string; role: "user"; kind: "text"; text: string }
-  | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa"; status?: JobStatus }
+  | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa"; status?: JobStatus; upload?: number }
   | { id: string; role: "assistant"; kind: "audit"; data: AuditResult }
   | { id: string; role: "assistant"; kind: "answer"; data: QaResult }
   | { id: string; role: "assistant"; kind: "error"; text: string; retry?: Retry };
@@ -94,9 +94,13 @@ export default function Home() {
       const controller = new AbortController();
       running.current = { controller };
       try {
-        const auditId = await startAudit(f, role, context, controller.signal, (id) => {
-          if (running.current) running.current.auditId = id;
-        });
+        const auditId = await startAudit(
+          f, role, context, controller.signal,
+          (id) => {
+            if (running.current) running.current.auditId = id;
+          },
+          (upload) => replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", upload }),
+        );
         const data = await waitForAudit(
           auditId,
           (status) => replace(loadingId, { id: loadingId, role: "assistant", kind: "loading", mode: "audit", status }),
@@ -259,7 +263,10 @@ export default function Home() {
                     <UserMessage msg={m} />
                   ) : (
                     <AssistantRow>
-                      {m.kind === "loading" && <Thinking mode={m.mode} status={m.status} onStop={stop} />}
+                      {m.kind === "loading" &&
+                        (m.upload !== undefined
+                          ? <UploadProgress pct={m.upload} onStop={stop} />
+                          : <Thinking mode={m.mode} status={m.status} onStop={stop} />)}
                       {m.kind === "error" && (
                         <ErrorCard text={m.text} onRetry={m.retry && !busy ? () => retry(m.id, m.retry!) : undefined} />
                       )}
@@ -480,6 +487,33 @@ const STEPS = {
   audit: ["Reading every page", "Finding the clauses", "Weighing risk for your side", "Checking quotes against the PDF"],
   qa: ["Searching the contract", "Drafting an answer"],
 };
+
+function UploadProgress({ pct, onStop }: { pct: number; onStop: () => void }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <p className="text-sm text-muted">{pct < 100 ? `Uploading your contract… ${pct}%` : "Uploaded. Starting the analysis…"}</p>
+        <button
+          type="button"
+          onClick={onStop}
+          className="ml-auto rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:border-high/40 hover:text-high"
+        >
+          Stop
+        </button>
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Upload progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className="h-2 w-full max-w-sm overflow-hidden rounded-full bg-sunken"
+      >
+        <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
 
 function Thinking({ mode, status, onStop }: { mode: "audit" | "qa"; status?: JobStatus; onStop: () => void }) {
   const steps = STEPS[mode];

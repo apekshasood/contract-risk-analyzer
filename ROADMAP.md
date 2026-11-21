@@ -80,7 +80,7 @@ Supabase Postgres                → stores job status + audit result
 ## Phase 5 — Frontend (Next.js) (~4–5 sessions)
 - [x] Login / signup pages
 - [x] Dashboard: list of past audits
-- [ ] Upload with progress bar (direct to Supabase Storage)
+- [x] Upload with progress bar (direct to Supabase Storage)
 - [x] Live status via Supabase Realtime (with slow poll fallback)
 - [x] Audit report view: risks grouped by severity, clause text quoted
 
