@@ -1,0 +1,15 @@
+{
+  "name": "sample-lease",
+  "contract": "sample-lease.txt",
+  "role": "tenant",
+  "context": "",
+  "expected": [
+    { "id": "rent-increase", "severity": "High", "match": ["increase the rent", "rent increase"] },
+    { "id": "deposit-forfeit", "severity": "High", "match": ["deposit"] },
+    { "id": "late-fee", "severity": "Medium", "match": ["late fee", "late payment"] },
+    { "id": "structural-repairs", "severity": "High", "match": ["structural", "all repairs"] },
+    { "id": "entry-without-notice", "severity": "Medium", "match": ["without notice", "enter the property"] },
+    { "id": "one-sided-termination", "severity": "High", "match": ["may not end this lease", "15 days notice", "termination"] },
+    { "id": "landlord-picks-arbitrator", "severity": "Medium", "match": ["arbitrator", "dispute"] }
+  ]
+}
