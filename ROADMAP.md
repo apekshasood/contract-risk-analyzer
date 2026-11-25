@@ -99,6 +99,7 @@ Supabase Postgres                → stores job status + audit result
 
 ## Phase 8 — Portfolio polish (~2 sessions)
 - [x] Rate limiting (5 audits per user per 24 h) + OpenAI monthly cap
+- [x] Stream Q&A answers word by word (Server-Sent Events: engine → gateway → web)
 - [ ] README: architecture diagram, measured numbers, design tradeoffs
 - [ ] 2-minute demo video
 

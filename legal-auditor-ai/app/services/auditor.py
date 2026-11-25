@@ -103,17 +103,44 @@ def audit_contract_text(text: str, context: str = "", role: str = "buyer") -> Au
     return verify_clauses(response.choices[0].message.parsed, text)
 
 
-def answer_contract_question(text: str, question: str, history: list[ChatTurn], role: str = "buyer") -> QuestionResponse:
-    messages = [
+def qa_messages(text: str, question: str, history: list[ChatTurn], role: str) -> list[dict]:
+    return [
         {"role": "system", "content": qa_system(role)},
         {"role": "system", "content": f"Contract text:\n{text}"},
         *[{"role": t.role, "content": t.content} for t in history],
         {"role": "user", "content": question},
     ]
+
+
+def answer_contract_question(text: str, question: str, history: list[ChatTurn], role: str = "buyer") -> QuestionResponse:
     response = client.chat.completions.parse(
         model="gpt-4o-mini",
         temperature=0,
-        messages=messages,
+        messages=qa_messages(text, question, history, role),
         response_format=QuestionResponse,
     )
     return response.choices[0].message.parsed
+
+
+def stream_contract_answer(text: str, question: str, history: list[ChatTurn], role: str = "buyer"):
+    """Yield ("delta", new answer text) while the model writes, then ("done", QuestionResponse).
+
+    Same structured output as answer_contract_question. The SDK parses the partial
+    JSON as it arrives, so we only forward the new characters of the `answer` field.
+    """
+    sent = ""
+    with client.chat.completions.stream(
+        model="gpt-4o-mini",
+        temperature=0,
+        messages=qa_messages(text, question, history, role),
+        response_format=QuestionResponse,
+    ) as stream:
+        for event in stream:
+            if event.type != "content.delta" or not isinstance(event.parsed, dict):
+                continue
+            answer = event.parsed.get("answer") or ""
+            if len(answer) > len(sent):
+                yield "delta", answer[len(sent):]
+                sent = answer
+        final = stream.get_final_completion().choices[0].message.parsed
+    yield "done", final
