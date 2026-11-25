@@ -51,6 +51,7 @@ All three run in or near Mumbai (`asia-south1` / Supabase `ap-south-1`). Secrets
 |---|---|---|---|
 | gateway | `POST /api/audits` (JSON, Bearer token) | `{ auditId }` | 202 `{ auditId, status }` |
 | gateway | `POST /api/uploads/qa` (Bearer token) | `contract`, `question`, `history` (JSON), `role` | `{ answer, direct_quote, is_in_contract }` |
+| gateway | `POST /api/uploads/qa/stream` (Bearer token) | same as `/qa` | `text/event-stream`: `delta` events `{ text }`, then `done` (full answer) or `error` |
 | gateway | `GET /health` | | status |
 | ai engine | `POST /api/jobs/:id`, `POST /api/audit`, `POST /api/qa` (all need `X-Engine-Secret`) | — / field named `file` | 202 / same |
 

@@ -10,8 +10,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase, useSession, gatewayFetch } from "../lib/supabase";
+import { supabase, useSession } from "../lib/supabase";
 import { cancelAudit, startAudit, waitForAudit, type JobStatus } from "../lib/audits";
+import { streamQuestion } from "../lib/qaStream";
 import { AuditView } from "./_components/AuditView";
 import type { AuditResult, QaResult } from "./_components/types";
 import {
@@ -26,7 +27,7 @@ type Msg =
   | { id: string; role: "user"; kind: "text"; text: string }
   | { id: string; role: "assistant"; kind: "loading"; mode: "audit" | "qa"; status?: JobStatus; upload?: number }
   | { id: string; role: "assistant"; kind: "audit"; data: AuditResult }
-  | { id: string; role: "assistant"; kind: "answer"; data: QaResult }
+  | { id: string; role: "assistant"; kind: "answer"; data: QaResult; streaming?: boolean; stopped?: boolean }
   | { id: string; role: "assistant"; kind: "error"; text: string; retry?: Retry };
 
 // What the Retry button re-sends
@@ -140,6 +141,7 @@ export default function Home() {
       ]);
       const controller = new AbortController();
       running.current = { controller };
+      let text = "";
       try {
         const fd = new FormData();
         fd.append("question", question);
@@ -152,9 +154,24 @@ export default function Home() {
             : []
           )
         ));
-        const data = await gatewayFetch<QaResult>("/api/uploads/qa", { method: "POST", body: fd, signal: controller.signal });
+        // First words replace the "thinking" card; later words are appended to the same card
+        const data = await streamQuestion(fd, controller.signal, (delta) => {
+          text += delta;
+          replace(loadingId, {
+            id: loadingId, role: "assistant", kind: "answer", streaming: true,
+            data: { answer: text, direct_quote: "", is_in_contract: false },
+          });
+        });
         replace(loadingId, { id: loadingId, role: "assistant", kind: "answer", data });
       } catch (e) {
+        if (isAbort(e) && text) {
+          // Stopped mid-answer: keep what was already written
+          replace(loadingId, {
+            id: loadingId, role: "assistant", kind: "answer", stopped: true,
+            data: { answer: `${text} …`, direct_quote: "", is_in_contract: false },
+          });
+          return;
+        }
         replace(loadingId, {
           id: loadingId, role: "assistant", kind: "error",
           text: isAbort(e) ? "Stopped." : errText(e),
@@ -270,7 +287,7 @@ export default function Home() {
                       {m.kind === "error" && (
                         <ErrorCard text={m.text} onRetry={m.retry && !busy ? () => retry(m.id, m.retry!) : undefined} />
                       )}
-                      {m.kind === "answer" && <Answer data={m.data} />}
+                      {m.kind === "answer" && <Answer data={m.data} streaming={m.streaming} stopped={m.stopped} />}
                       {m.kind === "audit" && (
                         <AuditView data={m.data} onAsk={ask} showSuggestions={m.id === lastAuditId && isLast(m.id) && !busy} />
                       )}
@@ -576,12 +593,17 @@ function ErrorCard({ text, onRetry }: { text: string; onRetry?: () => void }) {
   );
 }
 
-function Answer({ data }: { data: QaResult }) {
+function Answer({ data, streaming, stopped }: { data: QaResult; streaming?: boolean; stopped?: boolean }) {
   const hasQuote = data.is_in_contract && data.direct_quote && data.direct_quote !== "None";
   return (
     <div className="space-y-3">
-      <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{data.answer}</p>
-      {hasQuote ? (
+      <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
+        {data.answer}
+        {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-ink-2 align-middle" aria-hidden />}
+      </p>
+      {streaming ? null : stopped ? (
+        <p className="text-xs text-ink-2">Stopped.</p>
+      ) : hasQuote ? (
         <figure className="rounded-xl border border-line bg-surface p-4">
           <figcaption className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-accent">
             <IconShield width={14} height={14} /> From the contract
